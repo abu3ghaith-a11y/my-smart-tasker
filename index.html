@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en" dir="ltr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Smart AI Task Manager</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f8fafc;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+        .task-checkbox:checked + div {
+            text-decoration: line-through;
+            color: #94a3b8;
+        }
+
+        .btn-press:active { transform: scale(0.95); }
+
+        @keyframes slideIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        .task-item { animation: slideIn 0.3s ease-out; }
+
+        .glow-effect { animation: glow 2s infinite; }
+        @keyframes glow {
+            0% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.5); }
+            50% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.8); }
+            100% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.5); }
+        }
+
+        .loading-spin { animation: spin 1s linear infinite; }
+        @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    </style>
+</head>
+<body class="h-screen flex flex-col overflow-hidden text-slate-800">
+
+    <header class="bg-indigo-600 text-white p-4 shadow-lg z-10">
+        <div class="flex justify-between items-center max-w-2xl mx-auto">
+            <h1 class="text-xl font-bold flex items-center">
+                <i class="fas fa-brain mr-2"></i>
+                Smart Tasker
+                <span class="ml-2 text-[10px] bg-indigo-500 px-2 py-0.5 rounded-full border border-indigo-400 uppercase">AI ✨</span>
+            </h1>
+            <span id="dateDisplay" class="text-xs font-medium opacity-80"></span>
+        </div>
+    </header>
+
+    <main class="flex-1 overflow-y-auto p-4 pb-28" id="tasksContainer">
+        <div id="emptyState" class="flex flex-col items-center justify-center h-full text-slate-400 mt-10 hidden">
+            <i class="fas fa-magic text-6xl mb-4 opacity-20"></i>
+            <p class="font-bold text-lg text-slate-500">Your board is clear</p>
+            <p class="text-sm text-center max-w-xs mt-2 text-slate-400">Type a goal above or tap the magic wand ✨ for AI generated ideas!</p>
+        </div>
+    </main>
+
+    <!-- AI Loading Indicator -->
+    <div id="aiLoader" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex flex-col items-center justify-center">
+        <div class="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center">
+            <div class="relative">
+                <i class="fas fa-circle-notch text-5xl text-indigo-600 loading-spin"></i>
+                <i class="fas fa-sparkles text-xl text-amber-400 absolute top-0 right-0 animate-pulse"></i>
+            </div>
+            <p class="mt-4 text-slate-700 font-bold tracking-tight">Gemini is thinking...</p>
+        </div>
+    </div>
+
+    <!-- Floating Input Area -->
+    <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 via-slate-100 to-transparent z-20">
+        <div class="max-w-2xl mx-auto flex gap-2">
+            <div class="relative flex-1">
+                <input type="text" id="taskInput" placeholder="Add a task or get AI help..." 
+                    class="w-full bg-white border border-slate-200 shadow-xl rounded-2xl px-4 py-4 outline-none focus:border-indigo-500 transition-all text-slate-700"
+                    onkeypress="if(event.key === 'Enter') addTask()">
+            </div>
+            
+            <button onclick="addTask()" class="bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-2xl px-5 flex items-center justify-center transition-all btn-press shadow-md">
+                <i class="fas fa-plus"></i>
+            </button>
+
+            <button onclick="handleAIRequest()" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl px-5 flex items-center justify-center shadow-xl btn-press glow-effect transition-all">
+                <i class="fas fa-wand-magic-sparkles"></i>
+            </button>
+        </div>
+    </div>
+
+    <div id="toast" class="fixed top-24 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-2 rounded-full shadow-2xl opacity-0 transition-all duration-300 pointer-events-none z-[60] text-xs font-bold uppercase tracking-widest">Success</div>
+
+    <script>
+        const apiKey = ""; 
+        let tasks = JSON.parse(localStorage.getItem('smart_tasks_en_v1')) || [];
+        const tasksContainer = document.getElementById('tasksContainer');
+        const taskInput = document.getElementById('taskInput');
+        const emptyState = document.getElementById('emptyState');
+        const aiLoader = document.getElementById('aiLoader');
+
+        // Set localized date
+        document.getElementById('dateDisplay').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+
+        function renderTasks() {
+            tasksContainer.innerHTML = '';
+            if (tasks.length === 0) {
+                tasksContainer.appendChild(emptyState);
+                emptyState.classList.remove('hidden');
+                return;
+            }
+            emptyState.classList.add('hidden');
+            
+            // Sort: completed tasks at the bottom
+            tasks.sort((a, b) => a.completed - b.completed);
+
+            tasks.forEach((task, index) => {
+                const taskEl = document.createElement('div');
+                taskEl.className = `task-item bg-white p-4 rounded-2xl shadow-sm mb-3 flex items-center justify-between border border-slate-100 transition-all ${task.completed ? 'opacity-60 bg-slate-50' : ''}`;
+                taskEl.innerHTML = `
+                    <div class="flex items-center gap-4 flex-1 overflow-hidden">
+                        <label class="relative flex items-center cursor-pointer">
+                            <input type="checkbox" class="sr-only peer" ${task.completed ? 'checked' : ''} onchange="toggleTask(${index})">
+                            <div class="w-6 h-6 border-2 border-slate-300 rounded-lg peer-checked:bg-green-500 peer-checked:border-green-500 transition-all flex items-center justify-center">
+                                <i class="fas fa-check text-white text-[10px] hidden peer-checked:block"></i>
+                            </div>
+                        </label>
+                        <div class="text-base font-semibold truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-700'}">${task.text}</div>
+                    </div>
+                    <button onclick="deleteTask(${index})" class="text-slate-300 hover:text-red-500 p-2 transition-colors"><i class="fas fa-trash-alt text-sm"></i></button>
+                `;
+                tasksContainer.appendChild(taskEl);
+            });
+        }
+
+        function addTask(textOverride = null) {
+            const text = textOverride || taskInput.value.trim();
+            if (text) {
+                tasks.unshift({ text: text, completed: false });
+                saveAndRender();
+                if (!textOverride) taskInput.value = '';
+                showToast(textOverride ? 'AI Tasks Generated' : 'Task Added');
+            }
+        }
+
+        function toggleTask(index) {
+            tasks[index].completed = !tasks[index].completed;
+            saveAndRender();
+        }
+
+        function deleteTask(index) {
+            tasks.splice(index, 1);
+            saveAndRender();
+            showToast('Deleted');
+        }
+
+        function saveAndRender() {
+            localStorage.setItem('smart_tasks_en_v1', JSON.stringify(tasks));
+            renderTasks();
+        }
+
+        async function handleAIRequest() {
+            const userInput = taskInput.value.trim();
+            let prompt = userInput ? 
+                `Break down the goal "${userInput}" into 5 short actionable steps. Respond only with the steps, one per line.` : 
+                `Suggest 3 short, productive tasks for a fresh start today. One per line.`;
+
+            aiLoader.classList.remove('hidden');
+            try {
+                const responseText = await callGemini(prompt);
+                const lines = responseText.split('\n').filter(l => l.trim().length > 2);
+                if (userInput) taskInput.value = '';
+                // Add to list (reversed to keep AI order)
+                lines.reverse().forEach(l => {
+                    const cleanText = l.replace(/^[-*•\d.]\s*/, '').trim();
+                    if(cleanText) addTask(cleanText);
+                });
+            } catch (e) { 
+                showToast("Connection Error");
+            } finally { 
+                aiLoader.classList.add('hidden'); 
+            }
+        }
+
+        async function callGemini(prompt) {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+            });
+            const result = await response.json();
+            return result.candidates?.[0]?.content?.parts?.[0]?.text || "";
+        }
+
+        function showToast(msg) {
+            const t = document.getElementById('toast');
+            t.textContent = msg;
+            t.style.opacity = '1';
+            setTimeout(() => t.style.opacity = '0', 2000);
+        }
+
+        renderTasks();
+    </script>
+</body>
+</html>
