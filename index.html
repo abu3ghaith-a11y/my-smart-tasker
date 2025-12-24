@@ -15,10 +15,6 @@
             -webkit-tap-highlight-color: transparent;
         }
 
-        ::-webkit-scrollbar { width: 6px; }
-        ::-webkit-scrollbar-track { background: #f1f1f1; }
-        ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
-
         .task-checkbox:checked + div {
             text-decoration: line-through;
             color: #94a3b8;
@@ -34,117 +30,222 @@
 
         .glow-effect { animation: glow 2s infinite; }
         @keyframes glow {
-            0% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.5); }
-            50% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.8); }
-            100% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.5); }
+            0% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.4); }
+            50% { box-shadow: 0 0 20px rgba(99, 102, 241, 0.7); }
+            100% { box-shadow: 0 0 5px rgba(99, 102, 241, 0.4); }
         }
 
         .loading-spin { animation: spin 1s linear infinite; }
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+        
+        .progress-transition { transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1); }
     </style>
 </head>
 <body class="h-screen flex flex-col overflow-hidden text-slate-800">
 
+    <!-- Header & Progress -->
     <header class="bg-indigo-600 text-white p-4 shadow-lg z-10">
-        <div class="flex justify-between items-center max-w-2xl mx-auto">
-            <h1 class="text-xl font-bold flex items-center">
-                <i class="fas fa-brain mr-2"></i>
-                Smart Tasker
-                <span class="ml-2 text-[10px] bg-indigo-500 px-2 py-0.5 rounded-full border border-indigo-400 uppercase">AI ✨</span>
-            </h1>
-            <span id="dateDisplay" class="text-xs font-medium opacity-80"></span>
+        <div class="max-w-2xl mx-auto w-full">
+            <div class="flex justify-between items-center mb-3">
+                <h1 class="text-xl font-bold flex items-center">
+                    <i class="fas fa-brain mr-2"></i>
+                    Smart Tasker
+                    <span class="ml-2 text-[10px] bg-indigo-500 px-2 py-0.5 rounded-full border border-indigo-400 uppercase tracking-tighter">AI ✨</span>
+                </h1>
+                <button onclick="deleteAllTasks()" class="text-[10px] bg-red-500/20 hover:bg-red-500/40 border border-red-400/50 px-3 py-1 rounded-lg transition-colors">
+                    <i class="fas fa-trash-sweep mr-1"></i> Clear All
+                </button>
+            </div>
+            
+            <!-- Progress Bar -->
+            <div class="bg-indigo-900/30 rounded-full h-4 overflow-hidden relative">
+                <div id="progressBar" class="bg-emerald-400 h-full progress-transition w-0"></div>
+                <span id="progressText" class="absolute inset-0 flex items-center justify-center text-[10px] font-bold">0% Completed</span>
+            </div>
+            <div id="dateDisplay" class="text-[10px] mt-2 opacity-70 text-center uppercase tracking-widest font-medium"></div>
         </div>
     </header>
 
+    <!-- Main Content -->
     <main class="flex-1 overflow-y-auto p-4 pb-28" id="tasksContainer">
+        <div id="apiKeyWarning" class="bg-amber-50 border border-amber-200 p-4 rounded-xl mb-4 text-amber-800 text-xs hidden">
+            <i class="fas fa-exclamation-triangle mr-1"></i>
+            <strong>AI Key Missing:</strong> Insert your Gemini API Key in the code.
+        </div>
+
         <div id="emptyState" class="flex flex-col items-center justify-center h-full text-slate-400 mt-10 hidden">
             <i class="fas fa-magic text-6xl mb-4 opacity-20"></i>
-            <p class="font-bold text-lg text-slate-500">Your board is clear</p>
-            <p class="text-sm text-center max-w-xs mt-2 text-slate-400">Type a goal above or tap the magic wand ✨ for AI generated ideas!</p>
+            <p class="font-bold text-lg text-slate-500">Board is clear</p>
+            <p class="text-sm text-center max-w-xs mt-2">Type a goal or tap ✨ for AI breakdown!</p>
         </div>
     </main>
 
-    <!-- AI Loading Indicator -->
+    <!-- AI Suggestions Modal -->
+    <div id="aiModal" class="fixed inset-0 bg-black/60 z-[110] hidden flex items-center justify-center p-4 backdrop-blur-md">
+        <div class="bg-white rounded-[2.5rem] p-6 w-full max-w-md shadow-2xl">
+            <div class="flex items-center gap-3 mb-4">
+                <div class="bg-indigo-100 p-3 rounded-2xl text-indigo-600">
+                    <i class="fas fa-wand-magic-sparkles text-xl"></i>
+                </div>
+                <div>
+                    <h3 class="text-lg font-bold text-slate-800 leading-tight">AI Breakdown</h3>
+                    <p id="parentTaskPreview" class="text-xs text-slate-400 truncate max-w-[200px]"></p>
+                </div>
+            </div>
+            
+            <p class="text-sm text-slate-500 mb-4">Select the tasks you want to add:</p>
+            
+            <div id="suggestionsList" class="space-y-2 mb-6 max-h-[40vh] overflow-y-auto pr-2">
+                <!-- Suggestions will appear here -->
+            </div>
+
+            <div class="flex gap-3">
+                <button onclick="closeAIModal()" class="flex-1 py-4 bg-slate-100 rounded-2xl font-bold text-slate-600 transition-colors">Discard</button>
+                <button onclick="addSelectedSuggestions()" class="flex-[2] py-4 bg-indigo-600 rounded-2xl font-bold text-white shadow-lg shadow-indigo-100 btn-press">Add to List</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Loading Overlay -->
     <div id="aiLoader" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 hidden flex flex-col items-center justify-center">
         <div class="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center">
             <div class="relative">
                 <i class="fas fa-circle-notch text-5xl text-indigo-600 loading-spin"></i>
                 <i class="fas fa-sparkles text-xl text-amber-400 absolute top-0 right-0 animate-pulse"></i>
             </div>
-            <p class="mt-4 text-slate-700 font-bold tracking-tight">Gemini is thinking...</p>
+            <p class="mt-4 text-slate-700 font-bold tracking-tight">AI is breaking it down...</p>
         </div>
     </div>
 
-    <!-- Floating Input Area -->
+    <!-- Input Bar -->
     <div class="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-slate-100 via-slate-100 to-transparent z-20">
         <div class="max-w-2xl mx-auto flex gap-2">
-            <div class="relative flex-1">
-                <input type="text" id="taskInput" placeholder="Add a task or get AI help..." 
-                    class="w-full bg-white border border-slate-200 shadow-xl rounded-2xl px-4 py-4 outline-none focus:border-indigo-500 transition-all text-slate-700"
-                    onkeypress="if(event.key === 'Enter') addTask()">
-            </div>
+            <input type="text" id="taskInput" placeholder="Enter a big goal..." 
+                class="flex-1 bg-white border border-slate-200 shadow-xl rounded-2xl px-4 py-4 outline-none focus:border-indigo-600 transition-all text-slate-700">
             
-            <button onclick="addTask()" class="bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-2xl px-5 flex items-center justify-center transition-all btn-press shadow-md">
+            <button onclick="addTask()" class="bg-slate-200 hover:bg-slate-300 text-slate-600 rounded-2xl w-14 h-14 flex items-center justify-center text-xl transition-all btn-press shadow-md">
                 <i class="fas fa-plus"></i>
             </button>
 
-            <button onclick="handleAIRequest()" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl px-5 flex items-center justify-center shadow-xl btn-press glow-effect transition-all">
+            <button onclick="handleAIRequest()" class="bg-indigo-600 hover:bg-indigo-700 text-white rounded-2xl w-14 h-14 flex items-center justify-center text-xl shadow-xl btn-press glow-effect transition-all">
                 <i class="fas fa-wand-magic-sparkles"></i>
             </button>
         </div>
     </div>
 
-    <div id="toast" class="fixed top-24 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-2 rounded-full shadow-2xl opacity-0 transition-all duration-300 pointer-events-none z-[60] text-xs font-bold uppercase tracking-widest">Success</div>
+    <div id="toast" class="fixed top-32 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-2 rounded-full shadow-2xl opacity-0 transition-all duration-300 pointer-events-none z-[60] text-xs font-bold uppercase">Success</div>
+
+    <!-- Clear All Modal -->
+    <div id="confirmModal" class="fixed inset-0 bg-black/50 z-[100] hidden flex items-center justify-center p-6 backdrop-blur-sm">
+        <div class="bg-white rounded-3xl p-6 w-full max-w-sm shadow-2xl">
+            <h3 class="text-xl font-bold text-slate-800 mb-2">Clear All?</h3>
+            <p class="text-slate-500 text-sm mb-6">This will delete all tasks and progress permanently.</p>
+            <div class="flex gap-3">
+                <button onclick="closeDeleteModal()" class="flex-1 py-3 bg-slate-100 rounded-xl font-bold text-slate-600">Cancel</button>
+                <button id="confirmDeleteBtn" class="flex-1 py-3 bg-red-500 rounded-xl font-bold text-white shadow-lg">Delete All</button>
+            </div>
+        </div>
+    </div>
 
     <script>
-        const apiKey = ""; 
-        let tasks = JSON.parse(localStorage.getItem('smart_tasks_en_v1')) || [];
+        const apiKey = "AIzaSyB446a0JRIJa3s5GmZ86gG4deCppApl6Xg"; 
+
+        let tasks = JSON.parse(localStorage.getItem('smart_tasks_v5')) || [];
         const tasksContainer = document.getElementById('tasksContainer');
         const taskInput = document.getElementById('taskInput');
         const emptyState = document.getElementById('emptyState');
         const aiLoader = document.getElementById('aiLoader');
+        const aiModal = document.getElementById('aiModal');
+        const suggestionsList = document.getElementById('suggestionsList');
 
-        // Set localized date
-        document.getElementById('dateDisplay').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        let pendingParentTask = null;
+
+        document.getElementById('dateDisplay').textContent = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+
+        if (!apiKey) document.getElementById('apiKeyWarning').classList.remove('hidden');
+
+        function updateProgress() {
+            const allItems = tasks.flatMap(t => [t, ...(t.subtasks || [])]);
+            if (allItems.length === 0) {
+                document.getElementById('progressBar').style.width = '0%';
+                document.getElementById('progressText').textContent = '0% Completed';
+                return;
+            }
+            const completedCount = allItems.filter(t => t.completed).length;
+            const percentage = Math.round((completedCount / allItems.length) * 100);
+            document.getElementById('progressBar').style.width = `${percentage}%`;
+            document.getElementById('progressText').textContent = `${percentage}% Completed`;
+        }
 
         function renderTasks() {
+            const warning = document.getElementById('apiKeyWarning');
             tasksContainer.innerHTML = '';
+            tasksContainer.appendChild(warning);
+
             if (tasks.length === 0) {
                 tasksContainer.appendChild(emptyState);
                 emptyState.classList.remove('hidden');
+                updateProgress();
                 return;
             }
             emptyState.classList.add('hidden');
             
-            // Sort: completed tasks at the bottom
             tasks.sort((a, b) => a.completed - b.completed);
 
             tasks.forEach((task, index) => {
                 const taskEl = document.createElement('div');
-                taskEl.className = `task-item bg-white p-4 rounded-2xl shadow-sm mb-3 flex items-center justify-between border border-slate-100 transition-all ${task.completed ? 'opacity-60 bg-slate-50' : ''}`;
+                taskEl.className = "mb-4";
+                
+                let subtasksHTML = '';
+                if (task.subtasks && task.subtasks.length > 0) {
+                    subtasksHTML = `
+                        <div class="ml-10 mt-2 border-l-2 border-slate-100 pl-4 space-y-2">
+                            ${task.subtasks.map((sub, sIdx) => `
+                                <div class="flex items-center justify-between group">
+                                    <div class="flex items-center gap-3">
+                                        <input type="checkbox" ${sub.completed ? 'checked' : ''} onchange="toggleSubtask(${index}, ${sIdx})"
+                                            class="w-4 h-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500">
+                                        <span class="text-sm ${sub.completed ? 'line-through text-slate-400' : 'text-slate-600 font-medium'}">${sub.text}</span>
+                                    </div>
+                                    <button onclick="deleteSubtask(${index}, ${sIdx})" class="opacity-0 group-hover:opacity-100 text-slate-300 hover:text-red-400 p-1 transition-all">
+                                        <i class="fas fa-times text-[10px]"></i>
+                                    </button>
+                                </div>
+                            `).join('')}
+                        </div>
+                    `;
+                }
+
                 taskEl.innerHTML = `
-                    <div class="flex items-center gap-4 flex-1 overflow-hidden">
-                        <label class="relative flex items-center cursor-pointer">
-                            <input type="checkbox" class="sr-only peer" ${task.completed ? 'checked' : ''} onchange="toggleTask(${index})">
-                            <div class="w-6 h-6 border-2 border-slate-300 rounded-lg peer-checked:bg-green-500 peer-checked:border-green-500 transition-all flex items-center justify-center">
-                                <i class="fas fa-check text-white text-[10px] hidden peer-checked:block"></i>
-                            </div>
-                        </label>
-                        <div class="text-base font-semibold truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-700'}">${task.text}</div>
+                    <div class="task-item bg-white p-4 rounded-2xl shadow-sm flex items-center justify-between border border-slate-100 transition-all ${task.completed ? 'opacity-60 bg-slate-50' : ''}">
+                        <div class="flex items-center gap-4 flex-1 overflow-hidden">
+                            <label class="relative flex items-center cursor-pointer">
+                                <input type="checkbox" class="sr-only peer" ${task.completed ? 'checked' : ''} onchange="toggleTask(${index})">
+                                <div class="w-6 h-6 border-2 border-slate-300 rounded-lg peer-checked:bg-emerald-500 peer-checked:border-emerald-500 transition-all flex items-center justify-center">
+                                    <i class="fas fa-check text-white text-[10px] hidden peer-checked:block"></i>
+                                </div>
+                            </label>
+                            <div class="text-base font-semibold truncate ${task.completed ? 'line-through text-slate-400' : 'text-slate-700'}">${task.text}</div>
+                        </div>
+                        <div class="flex items-center">
+                            ${!task.completed ? `<button onclick="handleAIRequest('${task.text}', ${index})" class="text-indigo-400 hover:text-indigo-600 p-2 mr-1"><i class="fas fa-wand-sparkles text-sm"></i></button>` : ''}
+                            <button onclick="deleteTask(${index})" class="text-slate-300 hover:text-red-500 p-2 transition-colors"><i class="fas fa-trash-alt text-sm"></i></button>
+                        </div>
                     </div>
-                    <button onclick="deleteTask(${index})" class="text-slate-300 hover:text-red-500 p-2 transition-colors"><i class="fas fa-trash-alt text-sm"></i></button>
+                    ${subtasksHTML}
                 `;
                 tasksContainer.appendChild(taskEl);
             });
+            updateProgress();
         }
 
-        function addTask(textOverride = null) {
-            const text = textOverride || taskInput.value.trim();
+        function addTask() {
+            const text = taskInput.value.trim();
             if (text) {
-                tasks.unshift({ text: text, completed: false });
+                tasks.unshift({ text: text, completed: false, subtasks: [] });
                 saveAndRender();
-                if (!textOverride) taskInput.value = '';
-                showToast(textOverride ? 'AI Tasks Generated' : 'Task Added');
+                taskInput.value = '';
+                showToast('Task Added');
             }
         }
 
@@ -153,39 +254,92 @@
             saveAndRender();
         }
 
+        function toggleSubtask(pIdx, sIdx) {
+            tasks[pIdx].subtasks[sIdx].completed = !tasks[pIdx].subtasks[sIdx].completed;
+            saveAndRender();
+        }
+
         function deleteTask(index) {
             tasks.splice(index, 1);
             saveAndRender();
-            showToast('Deleted');
         }
 
-        function saveAndRender() {
-            localStorage.setItem('smart_tasks_en_v1', JSON.stringify(tasks));
-            renderTasks();
+        function deleteSubtask(pIdx, sIdx) {
+            tasks[pIdx].subtasks.splice(sIdx, 1);
+            saveAndRender();
         }
 
-        async function handleAIRequest() {
-            const userInput = taskInput.value.trim();
-            let prompt = userInput ? 
-                `Break down the goal "${userInput}" into 5 short actionable steps. Respond only with the steps, one per line.` : 
-                `Suggest 3 short, productive tasks for a fresh start today. One per line.`;
+        function deleteAllTasks() {
+            if (tasks.length === 0) return;
+            document.getElementById('confirmModal').classList.remove('hidden');
+            document.getElementById('confirmDeleteBtn').onclick = () => {
+                tasks = [];
+                saveAndRender();
+                closeDeleteModal();
+            };
+        }
 
+        function closeDeleteModal() { document.getElementById('confirmModal').classList.add('hidden'); }
+
+        async function handleAIRequest(text = null, index = null) {
+            const promptInput = text || taskInput.value.trim();
+            if (!promptInput) { showToast("Enter a goal first"); return; }
+            
+            pendingParentTask = { text: promptInput, index: index };
+            document.getElementById('parentTaskPreview').textContent = `Target: ${promptInput}`;
+            
             aiLoader.classList.remove('hidden');
             try {
+                const prompt = `Break down the goal "${promptInput}" into 4 short actionable steps. Respond ONLY with the steps, one per line. No numbers.`;
                 const responseText = await callGemini(prompt);
-                const lines = responseText.split('\n').filter(l => l.trim().length > 2);
-                if (userInput) taskInput.value = '';
-                // Add to list (reversed to keep AI order)
-                lines.reverse().forEach(l => {
-                    const cleanText = l.replace(/^[-*•\d.]\s*/, '').trim();
-                    if(cleanText) addTask(cleanText);
-                });
-            } catch (e) { 
-                showToast("Connection Error");
-            } finally { 
-                aiLoader.classList.add('hidden'); 
+                const suggestions = responseText.split('\n').filter(l => l.trim().length > 2);
+                
+                showAISuggestions(suggestions);
+            } catch (e) {
+                showToast("AI Error");
+            } finally {
+                aiLoader.classList.add('hidden');
             }
         }
+
+        function showAISuggestions(suggestions) {
+            suggestionsList.innerHTML = '';
+            suggestions.forEach((s, i) => {
+                const cleanText = s.replace(/^[-*•\d.]\s*/, '').trim();
+                const div = document.createElement('div');
+                div.className = "flex items-center gap-3 p-3 bg-slate-50 rounded-xl hover:bg-indigo-50 transition-colors cursor-pointer group";
+                div.innerHTML = `
+                    <input type="checkbox" id="suggest-${i}" checked class="w-5 h-5 rounded-lg border-slate-300 text-indigo-600">
+                    <label for="suggest-${i}" class="text-sm font-medium text-slate-700 flex-1 cursor-pointer">${cleanText}</label>
+                `;
+                suggestionsList.appendChild(div);
+            });
+            aiModal.classList.remove('hidden');
+        }
+
+        function addSelectedSuggestions() {
+            const selected = [];
+            suggestionsList.querySelectorAll('div').forEach(div => {
+                const checkbox = div.querySelector('input');
+                const label = div.querySelector('label');
+                if (checkbox.checked) selected.push({ text: label.textContent, completed: false });
+            });
+
+            if (pendingParentTask.index !== null) {
+                // Add to existing task
+                tasks[pendingParentTask.index].subtasks = [...(tasks[pendingParentTask.index].subtasks || []), ...selected];
+            } else {
+                // Create new task with subtasks
+                tasks.unshift({ text: pendingParentTask.text, completed: false, subtasks: selected });
+                taskInput.value = '';
+            }
+
+            saveAndRender();
+            closeAIModal();
+            showToast("Sub-tasks added");
+        }
+
+        function closeAIModal() { aiModal.classList.add('hidden'); pendingParentTask = null; }
 
         async function callGemini(prompt) {
             const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`;
@@ -198,6 +352,11 @@
             return result.candidates?.[0]?.content?.parts?.[0]?.text || "";
         }
 
+        function saveAndRender() {
+            localStorage.setItem('smart_tasks_v5', JSON.stringify(tasks));
+            renderTasks();
+        }
+
         function showToast(msg) {
             const t = document.getElementById('toast');
             t.textContent = msg;
@@ -206,6 +365,7 @@
         }
 
         renderTasks();
+        taskInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') addTask(); });
     </script>
 </body>
 </html>
